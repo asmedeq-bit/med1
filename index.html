@@ -551,64 +551,91 @@ const STATIC_DROPDOWNS = {
 };
 
 // ─── Remaining-life helpers ────────────────────────────────────────────────
+/** normalise header: ตัด whitespace หลายเคาะ + trim + lowercase */
+function normH(h){ return String(h||'').replace(/\s+/g,' ').trim(); }
+
 /** คอลัมน์ที่เก็บผลลัพธ์อายุคงเหลือ */
 function isRemainingLifeCol(h){
-  return h==='อายุใช้งาน คงเหลือ (ปี/เดือน)'
-      || h==='อายุใช้งานคงเหลือ(ปี / เดือน)'
-      || h==='อายุใช้งานคงเหลือ (ปี/เดือน)'
-      || h==='อายุคงเหลือ (ปี/เดือน)'
-      || /อายุ.*(คงเหลือ|remaining)/i.test(h);
+  const n = normH(h);
+  return n==='อายุใช้งาน คงเหลือ (ปี/เดือน)'
+      || n==='อายุใช้งานคงเหลือ (ปี/เดือน)'
+      || n==='อายุใช้งานคงเหลือ(ปี/เดือน)'
+      || n==='อายุใช้งานคงเหลือ(ปี / เดือน)'
+      || n==='อายุคงเหลือ (ปี/เดือน)'
+      || n==='อายุคงเหลือ(ปี/เดือน)'
+      || /อายุ.*(คงเหลือ|remaining)/i.test(n);
 }
 
 /** คอลัมน์อายุที่กำหนด (ปี) */
 function isLifespanCol(h){
-  return h==='อายุใช้งานที่กำหนด (ปี)'
-      || h==='อายุใช้งานที่กำหนด(ปี)'
-      || h==='อายุใช้งานที่กำหนด(ปี )'
-      || /อายุ.*กำหนด.*ปี/i.test(h);
+  const n = normH(h);
+  return n==='อายุใช้งานที่กำหนด (ปี)'
+      || n==='อายุใช้งานที่กำหนด(ปี)'
+      || n==='อายุใช้งานที่กำหนด(ปี )'
+      || n==='อายุการใช้งานที่กำหนด (ปี)'
+      || /อายุ.*กำหนด.*ปี/i.test(n)
+      || /อายุ.*กำหนด/i.test(n);
 }
 
 /** คอลัมน์วันที่ได้มา */
 function isAcquireDateCol(h){
-  return h==='วันเดือนปี ที่ได้มา'
-      || h==='วันเดือนปีที่ได้มา'
-      || h==='วันเดือนปี ที่ได้มา (ค.ศ.)'
-      || h==='รับมาวันที่'
-      || /วัน.*ได้มา/i.test(h);
+  const n = normH(h);
+  return n==='วันเดือนปี ที่ได้มา'
+      || n==='วันเดือนปีที่ได้มา'
+      || n==='วันเดือนปี ที่ได้มา (ค.ศ.)'
+      || n==='วันเดือนปีที่ได้มา (ค.ศ.)'
+      || n==='รับมาวันที่'
+      || /วัน.*ได้มา/i.test(n)
+      || /วันที่.*ได้มา/i.test(n);
 }
 
 /**
  * คำนวณอายุคงเหลือ
- * @param {string} dateStr  - วันที่ได้มา (YYYY-MM-DD หรือ DD/MM/YYYY หรือ DD/MM/YYYY(ค.ศ.))
- * @param {string|number} lifespanYears - อายุที่กำหนด (ปี)
- * @returns {{ text: string, totalMonths: number }|null}
+ * วันหมดอายุ = วันที่ได้มา + อายุที่กำหนด(ปี)
+ * อายุคงเหลือ = วันหมดอายุ − วันนี้
+ * รองรับ: YYYY-MM-DD, DD/MM/YYYY, D/M/YYYY, MM/YYYY, YYYY, BBBB(พ.ศ.)
  */
 function calcRemainingLife(dateStr, lifespanYears){
-  if(!dateStr || !lifespanYears) return null;
+  if(dateStr === undefined || dateStr === null || String(dateStr).trim() === '') return null;
+  if(lifespanYears === undefined || lifespanYears === null || String(lifespanYears).trim() === '') return null;
 
-  // แปลงวันที่ — รองรับทั้ง YYYY-MM-DD, DD/MM/YYYY, D/M/YYYY
   let acquireDate = null;
   const ds = String(dateStr).trim();
 
   if(/^\d{4}-\d{2}-\d{2}$/.test(ds)){
-    // YYYY-MM-DD (ISO)
     acquireDate = new Date(ds + 'T00:00:00');
   } else if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(ds)){
-    // DD/MM/YYYY (Thai common)
-    const parts = ds.split('/');
-    const day = parseInt(parts[0],10);
-    const mon = parseInt(parts[1],10) - 1;
-    let yr  = parseInt(parts[2],10);
-    // ปี พ.ศ. > 2400 → แปลงเป็น ค.ศ.
+    const p = ds.split('/');
+    let yr = parseInt(p[2],10);
     if(yr > 2400) yr -= 543;
-    acquireDate = new Date(yr, mon, day);
+    acquireDate = new Date(yr, parseInt(p[1],10)-1, parseInt(p[0],10));
+  } else if(/^\d{1,2}\/\d{4}$/.test(ds)){
+    const p = ds.split('/');
+    let yr = parseInt(p[1],10);
+    if(yr > 2400) yr -= 543;
+    acquireDate = new Date(yr, parseInt(p[0],10)-1, 1);
+  } else if(/^\d{4}-\d{2}$/.test(ds)){
+    const p = ds.split('-');
+    acquireDate = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, 1);
+  } else if(/^\d{4}$/.test(ds)){
+    let yr = parseInt(ds,10);
+    if(yr > 2400) yr -= 543;
+    acquireDate = new Date(yr, 0, 1);
   } else {
     return null;
   }
 
-  if(isNaN(acquireDate.getTime())) return null;
+  if(!acquireDate || isNaN(acquireDate.getTime())) return null;
 
-  const ls = parseFloat(String(lifespanYears).replace(/[^\d.]/g,''));
+  // แปลงอายุที่กำหนด — รองรับ "10", "10 ปี", "10.5", "10 ปี 6 เดือน"
+  const lsStr = String(lifespanYears).trim();
+  let ls = NaN;
+  const pyMatch = lsStr.match(/(\d+(?:\.\d+)?)\s*ปี(?:\s*(\d+)\s*เดือน)?/);
+  if(pyMatch){
+    ls = parseFloat(pyMatch[1]) + (pyMatch[2] ? parseInt(pyMatch[2],10)/12 : 0);
+  } else {
+    ls = parseFloat(lsStr.replace(/[^\d.]/g,''));
+  }
   if(isNaN(ls) || ls <= 0) return null;
 
   // วันหมดอายุ
@@ -617,24 +644,20 @@ function calcRemainingLife(dateStr, lifespanYears){
   const fracMonths = Math.round((ls % 1) * 12);
   if(fracMonths > 0) expireDate.setMonth(expireDate.getMonth() + fracMonths);
 
+  // คำนวณจากวันปัจจุบัน
   const now = new Date();
-  // ผลต่างเป็นเดือน
+  now.setHours(0,0,0,0);
   const diffMs = expireDate.getTime() - now.getTime();
   const totalMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.4375));
 
   if(totalMonths <= 0){
-    // หมดอายุแล้ว
     const absM = Math.abs(totalMonths);
-    const yr = Math.floor(absM / 12);
-    const mo = absM % 12;
-    const txt = yr > 0 ? `หมดอายุแล้ว ${yr} ปี ${mo} เดือน` : `หมดอายุแล้ว ${mo} เดือน`;
+    const yr2 = Math.floor(absM/12), mo2 = absM % 12;
+    const txt = yr2 > 0 ? `หมดอายุแล้ว ${yr2} ปี ${mo2} เดือน` : `หมดอายุแล้ว ${mo2} เดือน`;
     return { text: txt, totalMonths };
   }
-
-  const yr2 = Math.floor(totalMonths / 12);
-  const mo2 = totalMonths % 12;
-  const text = yr2 > 0 ? `${yr2} ปี ${mo2} เดือน` : `${mo2} เดือน`;
-  return { text, totalMonths };
+  const yr2 = Math.floor(totalMonths/12), mo2 = totalMonths % 12;
+  return { text: yr2 > 0 ? `${yr2} ปี ${mo2} เดือน` : `${mo2} เดือน`, totalMonths };
 }
 
 /**
@@ -975,19 +998,22 @@ function renderTableBody(headers, rawQ){
         // คอลัมน์สถานะ
         if(ci === sk){ const nv = normalizeStatus(val); if(nv) return `<td><span class="status-badge ${getStCls(nv)}">${escHtml(nv)}</span></td>`; return `<td></td>`; }
 
-        // คอลัมน์อายุคงเหลือ — คำนวณ real-time จากข้อมูลใน row
+        // คอลัมน์อายุคงเหลือ — คำนวณ real-time เสมอ ไม่ใช้ค่าเก่าจาก DB
         if(ci === remainIdx && lifespanIdx >= 0 && dateIdx >= 0){
-          const dateVal2     = (it.data && it.data[headers[dateIdx]]) ? String(it.data[headers[dateIdx]]) : '';
-          const lifespanVal2 = (it.data && it.data[headers[lifespanIdx]]) ? String(it.data[headers[lifespanIdx]]) : '';
+          const dateVal2     = String(it.data?.[headers[dateIdx]]   ?? '').trim();
+          const lifespanVal2 = String(it.data?.[headers[lifespanIdx]] ?? '').trim();
+          if(!dateVal2 || !lifespanVal2){
+            return `<td style="color:var(--text-muted);font-size:11px" title="ไม่มีข้อมูลวันที่ได้มา หรืออายุที่กำหนด">—</td>`;
+          }
           const res = calcRemainingLife(dateVal2, lifespanVal2);
           if(res){
-            let cellStyle='background:#f0fdf4;color:#065f46;font-weight:600';
-            if(res.totalMonths <= 0) cellStyle='background:#fff1f2;color:#b91c1c;font-weight:600';
-            else if(res.totalMonths <= 12) cellStyle='background:#fffbeb;color:#b45309;font-weight:600';
-            return `<td style="${cellStyle};white-space:nowrap" title="คำนวณอัตโนมัติ"><i class="fas fa-magic" style="font-size:9px;margin-right:4px;opacity:.5"></i>${escHtml(res.text)}</td>`;
+            let cellStyle = 'background:#f0fdf4;color:#065f46;font-weight:600';
+            if(res.totalMonths <= 0)  cellStyle = 'background:#fff1f2;color:#b91c1c;font-weight:600';
+            else if(res.totalMonths <= 12) cellStyle = 'background:#fffbeb;color:#b45309;font-weight:600';
+            return `<td style="${cellStyle};white-space:nowrap" title="คำนวณจาก: ${escHtml(dateVal2)} + ${escHtml(lifespanVal2)} ปี"><i class="fas fa-magic" style="font-size:9px;margin-right:4px;opacity:.5"></i>${escHtml(res.text)}</td>`;
           }
-          // ถ้าคำนวณไม่ได้ แสดงค่าเดิมจากฐานข้อมูล (fallback)
-          return `<td title="${escHtml(val)}">${q ? highlightMatch(val, rawQ, S.searchMode) : escHtml(val)}</td>`;
+          // format ไม่รู้จัก — แสดงค่าเก่าพร้อม icon เตือน
+          return `<td style="color:var(--text-muted);font-size:11px" title="รูปแบบวันที่ไม่รู้จัก: ${escHtml(dateVal2)}"><i class="fas fa-question-circle" style="margin-right:3px;color:var(--warning)"></i>${escHtml(val)}</td>`;
         }
 
         return `<td title="${escHtml(val)}">${q ? highlightMatch(val, rawQ, S.searchMode) : escHtml(val)}</td>`;
@@ -1553,15 +1579,19 @@ function renderSmTable(){
           return `<td style="padding:9px 14px;white-space:nowrap"><span style="color:var(--warning);font-size:11px;margin-right:6px">ไม่ระบุ</span></td>`;
         }
         if(ci === rIdx && lsIdx >= 0 && dtIdx >= 0){
-          const dateVal3 = item.data?.[hdrs[dtIdx]] ? String(item.data[hdrs[dtIdx]]) : '';
-          const lsVal3   = item.data?.[hdrs[lsIdx]]  ? String(item.data[hdrs[lsIdx]])  : '';
+          const dateVal3 = String(item.data?.[hdrs[dtIdx]]  ?? '').trim();
+          const lsVal3   = String(item.data?.[hdrs[lsIdx]]  ?? '').trim();
+          if(!dateVal3 || !lsVal3){
+            return `<td style="padding:9px 14px;color:var(--text-muted);font-size:11px" title="ไม่มีข้อมูลครบ">—</td>`;
+          }
           const res = calcRemainingLife(dateVal3, lsVal3);
           if(res){
             let cs = 'background:#f0fdf4;color:#065f46;font-weight:600';
             if(res.totalMonths <= 0) cs='background:#fff1f2;color:#b91c1c;font-weight:600';
             else if(res.totalMonths <= 12) cs='background:#fffbeb;color:#b45309;font-weight:600';
-            return `<td style="padding:9px 14px;${cs};white-space:nowrap"><i class="fas fa-magic" style="font-size:9px;margin-right:3px;opacity:.5"></i>${escHtml(res.text)}</td>`;
+            return `<td style="padding:9px 14px;${cs};white-space:nowrap" title="คำนวณจาก: ${escHtml(dateVal3)} + ${escHtml(lsVal3)} ปี"><i class="fas fa-magic" style="font-size:9px;margin-right:3px;opacity:.5"></i>${escHtml(res.text)}</td>`;
           }
+          return `<td style="padding:9px 14px;color:var(--text-muted);font-size:11px" title="รูปแบบวันที่ไม่รู้จัก: ${escHtml(dateVal3)}"><i class="fas fa-question-circle" style="margin-right:3px;color:var(--warning)"></i>${escHtml(val)}</td>`;
         }
         return `<td style="padding:9px 14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(val)}">${escHtml(val)}</td>`;
       }).join('');
